@@ -1,0 +1,74 @@
+# Save this as train_best_model.py and run it
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import StackingRegressor, GradientBoostingRegressor
+from xgboost import XGBRegressor
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+import joblib
+
+# 1. Load Data
+df = pd.read_csv("dataset.csv")
+
+# 2. Preprocessing (Automated for robustness)
+# Define features used in your app
+features = ['OverallQual', 'GrLivArea', 'GarageArea', '1stFlrSF',
+           'FullBath', 'YearBuilt', 'YearRemodAdd', 'MasVnrArea', 'Fireplaces',
+           'BsmtFinSF1', 'LotFrontage', 'WoodDeckSF', 'OpenPorchSF', 'LotArea',
+           'CentralAir']
+
+X = df[features]
+y = df['SalePrice']
+
+# Split numerical and categorical
+numeric_features = [f for f in features if f != 'CentralAir']
+categorical_features = ['CentralAir']
+
+# Create Transformers
+numeric_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='mean')),
+    ('scaler', StandardScaler())
+])
+
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('encoder', OneHotEncoder(handle_unknown='ignore'))
+])
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, numeric_features),
+        ('cat', categorical_transformer, categorical_features)
+    ])
+
+# 3. Define the Stacking Model (Best Performance)
+# Level 1 Learners: XGBoost + GradientBoosting
+estimators = [
+    ('xgb', XGBRegressor(n_estimators=1000, learning_rate=0.01, max_depth=6, objective='reg:squarederror')),
+    ('gbr', GradientBoostingRegressor(n_estimators=1000, learning_rate=0.01, max_depth=6))
+]
+
+# Final Estimator (The "Blender"): Ridge Regression minimizes overfitting
+stacking_model = StackingRegressor(
+    estimators=estimators,
+    final_estimator=Ridge()
+)
+
+# 4. Create Pipeline & Train
+clf = Pipeline(steps=[('preprocessor', preprocessor),
+                      ('regressor', stacking_model)])
+
+print("Training Stacking Model... this may take a minute...")
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+clf.fit(X_train, y_train)
+
+# 5. Evaluate & Save
+score = clf.score(X_test, y_test)
+print(f"New Model R2 Score: {score:.4f}")
+
+joblib.dump(clf, 'best_model.jb')
+print("Model saved as best_model.jb")
